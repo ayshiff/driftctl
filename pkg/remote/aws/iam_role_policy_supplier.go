@@ -1,13 +1,10 @@
 package aws
 
 import (
-	"fmt"
-
+	"github.com/cloudskiff/driftctl/pkg/remote/aws/repository"
 	remoteerror "github.com/cloudskiff/driftctl/pkg/remote/error"
 	awsdeserializer "github.com/cloudskiff/driftctl/pkg/resource/aws/deserializer"
 
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 	"github.com/cloudskiff/driftctl/pkg/remote/deserializer"
 	"github.com/cloudskiff/driftctl/pkg/resource"
 	resourceaws "github.com/cloudskiff/driftctl/pkg/resource/aws"
@@ -20,7 +17,7 @@ import (
 type IamRolePolicySupplier struct {
 	reader       terraform.ResourceReader
 	deserializer deserializer.CTYDeserializer
-	client       iamiface.IAMAPI
+	client       repository.IAMRepository
 	runner       *terraform.ParallelResourceReader
 }
 
@@ -28,20 +25,20 @@ func NewIamRolePolicySupplier(provider *AWSTerraformProvider) *IamRolePolicySupp
 	return &IamRolePolicySupplier{
 		provider,
 		awsdeserializer.NewIamRolePolicyDeserializer(),
-		iam.New(provider.session),
+		repository.NewIAMClient(provider.session),
 		terraform.NewParallelResourceReader(provider.Runner().SubRunner()),
 	}
 }
 
 func (s *IamRolePolicySupplier) Resources() ([]resource.Resource, error) {
-	policies, err := listIamRolePolicies(s.client, resourceaws.AwsIamRolePolicyResourceType)
+	policies, err := s.client.ListAllRolePolicies()
 	if err != nil {
-		return nil, err
+		return nil, remoteerror.NewResourceEnumerationErrorWithType(err, resourceaws.AwsIamRolePolicyResourceType, resourceaws.AwsIamRoleResourceType)
 	}
 	for _, policyName := range policies {
 		name := policyName
 		s.runner.Run(func() (cty.Value, error) {
-			return s.readRes(name)
+			return s.readRolePolicy(name)
 		})
 	}
 	results, err := s.runner.Wait()
@@ -52,7 +49,7 @@ func (s *IamRolePolicySupplier) Resources() ([]resource.Resource, error) {
 	return s.deserializer.Deserialize(results)
 }
 
-func (s *IamRolePolicySupplier) readRes(name string) (cty.Value, error) {
+func (s *IamRolePolicySupplier) readRolePolicy(name string) (cty.Value, error) {
 	res, err := s.reader.ReadResource(
 		terraform.ReadResourceArgs{
 			Ty: resourceaws.AwsIamRolePolicyResourceType,
@@ -65,39 +62,4 @@ func (s *IamRolePolicySupplier) readRes(name string) (cty.Value, error) {
 	}
 
 	return *res, nil
-}
-
-func listIamRolePolicies(client iamiface.IAMAPI, supplierType string) ([]string, error) {
-	roles, err := listIamRoles(client, supplierType)
-	if err != nil {
-		return nil, err
-	}
-
-	var resources []string
-	for _, role := range roles {
-		role := role
-		input := &iam.ListRolePoliciesInput{
-			RoleName: role.RoleName,
-		}
-
-		err := client.ListRolePoliciesPages(input, func(res *iam.ListRolePoliciesOutput, lastPage bool) bool {
-			for _, policy := range res.PolicyNames {
-				policy := policy
-				resources = append(
-					resources,
-					fmt.Sprintf(
-						"%s:%s",
-						*role.RoleName,
-						*policy,
-					),
-				)
-			}
-			return !lastPage
-		})
-		if err != nil {
-			return nil, remoteerror.NewResourceEnumerationErrorWithType(err, supplierType, resourceaws.AwsIamRoleResourceType)
-		}
-	}
-
-	return resources, nil
 }
