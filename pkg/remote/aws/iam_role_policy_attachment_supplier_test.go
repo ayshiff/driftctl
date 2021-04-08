@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cloudskiff/driftctl/pkg/remote/aws/repository"
 	remoteerror "github.com/cloudskiff/driftctl/pkg/remote/error"
 
 	resourceaws "github.com/cloudskiff/driftctl/pkg/resource/aws"
@@ -18,12 +19,11 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/iam"
 
-	"github.com/cloudskiff/driftctl/test/goldenfile"
-	mocks2 "github.com/cloudskiff/driftctl/test/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/cloudskiff/driftctl/mocks"
+	"github.com/cloudskiff/driftctl/test/goldenfile"
+	mocks2 "github.com/cloudskiff/driftctl/test/mocks"
 
 	"github.com/cloudskiff/driftctl/pkg/resource"
 	"github.com/cloudskiff/driftctl/pkg/terraform"
@@ -35,14 +35,14 @@ func TestIamRolePolicyAttachmentSupplier_Resources(t *testing.T) {
 	cases := []struct {
 		test    string
 		dirName string
-		mocks   func(client *mocks.FakeIAM)
+		mocks   func(repo *repository.MockIAMRepository)
 		err     error
 	}{
 		{
 			test:    "iam multiples roles multiple policies",
 			dirName: "iam_role_policy_attachment_multiple",
-			mocks: func(client *mocks.FakeIAM) {
-				client.On("ListRolesPages",
+			mocks: func(repo *repository.MockIAMRepository) {
+				repo.On("ListRolesPages",
 					&iam.ListRolesInput{},
 					mock.MatchedBy(func(callback func(res *iam.ListRolesOutput, lastPage bool) bool) bool {
 						callback(&iam.ListRolesOutput{Roles: []*iam.Role{
@@ -59,7 +59,7 @@ func TestIamRolePolicyAttachmentSupplier_Resources(t *testing.T) {
 				shouldSkipfirst := false
 				shouldSkipSecond := false
 
-				client.On("ListAttachedRolePoliciesPages",
+				repo.On("ListAttachedRolePoliciesPages",
 					&iam.ListAttachedRolePoliciesInput{
 						RoleName: aws.String("test-role"),
 					},
@@ -87,7 +87,7 @@ func TestIamRolePolicyAttachmentSupplier_Resources(t *testing.T) {
 						return true
 					})).Return(nil).Once()
 
-				client.On("ListAttachedRolePoliciesPages",
+				repo.On("ListAttachedRolePoliciesPages",
 					&iam.ListAttachedRolePoliciesInput{
 						RoleName: aws.String("test-role2"),
 					},
@@ -120,8 +120,8 @@ func TestIamRolePolicyAttachmentSupplier_Resources(t *testing.T) {
 		{
 			test:    "check that we ignore policy for ignored roles",
 			dirName: "iam_role_policy_attachment_for_ignored_roles",
-			mocks: func(client *mocks.FakeIAM) {
-				client.On("ListRolesPages",
+			mocks: func(repo *repository.MockIAMRepository) {
+				repo.On("ListRolesPages",
 					&iam.ListRolesInput{},
 					mock.MatchedBy(func(callback func(res *iam.ListRolesOutput, lastPage bool) bool) bool {
 						callback(&iam.ListRolesOutput{Roles: []*iam.Role{
@@ -143,8 +143,8 @@ func TestIamRolePolicyAttachmentSupplier_Resources(t *testing.T) {
 		{
 			test:    "Cannot list roles",
 			dirName: "iam_role_policy_attachment_for_ignored_roles",
-			mocks: func(client *mocks.FakeIAM) {
-				client.On("ListRolesPages",
+			mocks: func(repo *repository.MockIAMRepository) {
+				repo.On("ListRolesPages",
 					&iam.ListRolesInput{},
 					mock.MatchedBy(func(callback func(res *iam.ListRolesOutput, lastPage bool) bool) bool {
 						callback(&iam.ListRolesOutput{Roles: []*iam.Role{}}, true)
@@ -156,8 +156,8 @@ func TestIamRolePolicyAttachmentSupplier_Resources(t *testing.T) {
 		{
 			test:    "Cannot list roles policies",
 			dirName: "iam_role_policy_attachment_for_ignored_roles",
-			mocks: func(client *mocks.FakeIAM) {
-				client.On("ListRolesPages",
+			mocks: func(repo *repository.MockIAMRepository) {
+				repo.On("ListRolesPages",
 					&iam.ListRolesInput{},
 					mock.MatchedBy(func(callback func(res *iam.ListRolesOutput, lastPage bool) bool) bool {
 						callback(&iam.ListRolesOutput{Roles: []*iam.Role{
@@ -170,7 +170,7 @@ func TestIamRolePolicyAttachmentSupplier_Resources(t *testing.T) {
 						}}, true)
 						return true
 					})).Return(nil).Once()
-				client.On("ListAttachedRolePoliciesPages",
+				repo.On("ListAttachedRolePoliciesPages",
 					mock.Anything,
 					mock.MatchedBy(func(callback func(res *iam.ListAttachedRolePoliciesOutput, lastPage bool) bool) bool {
 						return true
@@ -194,7 +194,7 @@ func TestIamRolePolicyAttachmentSupplier_Resources(t *testing.T) {
 		}
 
 		t.Run(c.test, func(tt *testing.T) {
-			fakeIam := mocks.FakeIAM{}
+			fakeIam := repository.MockIAMRepository{}
 			c.mocks(&fakeIam)
 
 			provider := mocks2.NewMockedGoldenTFProvider(c.dirName, providerLibrary.Provider(terraform.AWS), shouldUpdate)
