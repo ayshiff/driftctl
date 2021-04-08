@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cloudskiff/driftctl/pkg/remote/aws/repository"
 	remoteerror "github.com/cloudskiff/driftctl/pkg/remote/error"
 
 	resourceaws "github.com/cloudskiff/driftctl/pkg/resource/aws"
@@ -18,11 +19,11 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/iam"
 
-	mocks2 "github.com/cloudskiff/driftctl/test/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/cloudskiff/driftctl/mocks"
+	mocks2 "github.com/cloudskiff/driftctl/test/mocks"
+
 	"github.com/cloudskiff/driftctl/pkg/resource"
 	"github.com/cloudskiff/driftctl/pkg/terraform"
 	"github.com/cloudskiff/driftctl/test"
@@ -34,22 +35,22 @@ func TestIamRoleSupplier_Resources(t *testing.T) {
 	cases := []struct {
 		test    string
 		dirName string
-		mocks   func(client *mocks.FakeIAM)
+		mocks   func(repo *repository.MockIAMRepository)
 		err     error
 	}{
 		{
 			test:    "no iam roles",
 			dirName: "iam_role_empty",
-			mocks: func(client *mocks.FakeIAM) {
-				client.On("ListRolesPages", mock.Anything, mock.Anything).Return(nil)
+			mocks: func(repo *repository.MockIAMRepository) {
+				repo.On("ListRolesPages", mock.Anything, mock.Anything).Return(nil)
 			},
 			err: nil,
 		},
 		{
 			test:    "iam multiples roles",
 			dirName: "iam_role_multiple",
-			mocks: func(client *mocks.FakeIAM) {
-				client.On("ListRolesPages",
+			mocks: func(repo *repository.MockIAMRepository) {
+				repo.On("ListRolesPages",
 					&iam.ListRolesInput{},
 					mock.MatchedBy(func(callback func(res *iam.ListRolesOutput, lastPage bool) bool) bool {
 						callback(&iam.ListRolesOutput{Roles: []*iam.Role{
@@ -73,8 +74,8 @@ func TestIamRoleSupplier_Resources(t *testing.T) {
 		{
 			test:    "iam roles ignore services roles",
 			dirName: "iam_role_ignore_services_roles",
-			mocks: func(client *mocks.FakeIAM) {
-				client.On("ListRolesPages",
+			mocks: func(repo *repository.MockIAMRepository) {
+				repo.On("ListRolesPages",
 					&iam.ListRolesInput{},
 					mock.MatchedBy(func(callback func(res *iam.ListRolesOutput, lastPage bool) bool) bool {
 						callback(&iam.ListRolesOutput{Roles: []*iam.Role{
@@ -96,8 +97,8 @@ func TestIamRoleSupplier_Resources(t *testing.T) {
 		{
 			test:    "cannot list iam roles",
 			dirName: "iam_role_empty",
-			mocks: func(client *mocks.FakeIAM) {
-				client.On("ListRolesPages", mock.Anything, mock.Anything).Return(awserr.NewRequestFailure(nil, 403, ""))
+			mocks: func(repo *repository.MockIAMRepository) {
+				repo.On("ListRolesPages", mock.Anything, mock.Anything).Return(awserr.NewRequestFailure(nil, 403, ""))
 			},
 			err: remoteerror.NewResourceEnumerationError(awserr.NewRequestFailure(nil, 403, ""), resourceaws.AwsIamRoleResourceType),
 		},
@@ -117,7 +118,7 @@ func TestIamRoleSupplier_Resources(t *testing.T) {
 		}
 
 		t.Run(c.test, func(tt *testing.T) {
-			fakeIam := mocks.FakeIAM{}
+			fakeIam := repository.MockIAMRepository{}
 			c.mocks(&fakeIam)
 
 			provider := mocks2.NewMockedGoldenTFProvider(c.dirName, providerLibrary.Provider(terraform.AWS), shouldUpdate)
