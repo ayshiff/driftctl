@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cloudskiff/driftctl/pkg/remote/aws/repository"
 	remoteerror "github.com/cloudskiff/driftctl/pkg/remote/error"
 
 	resourceaws "github.com/cloudskiff/driftctl/pkg/resource/aws"
@@ -18,12 +19,11 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/iam"
 
-	"github.com/cloudskiff/driftctl/test/goldenfile"
-	mocks2 "github.com/cloudskiff/driftctl/test/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/cloudskiff/driftctl/mocks"
+	"github.com/cloudskiff/driftctl/test/goldenfile"
+	mocks2 "github.com/cloudskiff/driftctl/test/mocks"
 
 	"github.com/cloudskiff/driftctl/pkg/resource"
 	"github.com/cloudskiff/driftctl/pkg/terraform"
@@ -35,14 +35,14 @@ func TestIamUserPolicyAttachmentSupplier_Resources(t *testing.T) {
 	cases := []struct {
 		test    string
 		dirName string
-		mocks   func(client *mocks.FakeIAM)
+		mocks   func(repo *repository.MockIAMRepository)
 		err     error
 	}{
 		{
 			test:    "iam multiples users multiple policies",
 			dirName: "iam_user_policy_attachment_multiple",
-			mocks: func(client *mocks.FakeIAM) {
-				client.On("ListUsersPages",
+			mocks: func(repo *repository.MockIAMRepository) {
+				repo.On("ListUsersPages",
 					&iam.ListUsersInput{},
 					mock.MatchedBy(func(callback func(res *iam.ListUsersOutput, lastPage bool) bool) bool {
 						callback(&iam.ListUsersOutput{Users: []*iam.User{
@@ -63,7 +63,7 @@ func TestIamUserPolicyAttachmentSupplier_Resources(t *testing.T) {
 				shouldSkipSecond := false
 				shouldSkipThird := false
 
-				client.On("ListAttachedUserPoliciesPages",
+				repo.On("ListAttachedUserPoliciesPages",
 					&iam.ListAttachedUserPoliciesInput{
 						UserName: aws.String("loadbalancer"),
 					},
@@ -95,7 +95,7 @@ func TestIamUserPolicyAttachmentSupplier_Resources(t *testing.T) {
 						return true
 					})).Return(nil).Once()
 
-				client.On("ListAttachedUserPoliciesPages",
+				repo.On("ListAttachedUserPoliciesPages",
 					&iam.ListAttachedUserPoliciesInput{
 						UserName: aws.String("loadbalancer2"),
 					},
@@ -127,7 +127,7 @@ func TestIamUserPolicyAttachmentSupplier_Resources(t *testing.T) {
 						return true
 					})).Return(nil).Once()
 
-				client.On("ListAttachedUserPoliciesPages",
+				repo.On("ListAttachedUserPoliciesPages",
 					&iam.ListAttachedUserPoliciesInput{
 						UserName: aws.String("loadbalancer3"),
 					},
@@ -159,8 +159,8 @@ func TestIamUserPolicyAttachmentSupplier_Resources(t *testing.T) {
 		{
 			test:    "cannot list user",
 			dirName: "iam_user_policy_empty",
-			mocks: func(client *mocks.FakeIAM) {
-				client.On("ListUsersPages",
+			mocks: func(repo *repository.MockIAMRepository) {
+				repo.On("ListUsersPages",
 					&iam.ListUsersInput{},
 					mock.MatchedBy(func(callback func(res *iam.ListUsersOutput, lastPage bool) bool) bool {
 						return true
@@ -171,8 +171,8 @@ func TestIamUserPolicyAttachmentSupplier_Resources(t *testing.T) {
 		{
 			test:    "cannot list user policies attachment",
 			dirName: "iam_user_policy_empty",
-			mocks: func(client *mocks.FakeIAM) {
-				client.On("ListUsersPages",
+			mocks: func(repo *repository.MockIAMRepository) {
+				repo.On("ListUsersPages",
 					&iam.ListUsersInput{},
 					mock.MatchedBy(func(callback func(res *iam.ListUsersOutput, lastPage bool) bool) bool {
 						callback(&iam.ListUsersOutput{Users: []*iam.User{
@@ -188,7 +188,7 @@ func TestIamUserPolicyAttachmentSupplier_Resources(t *testing.T) {
 						}}, true)
 						return true
 					})).Return(nil).Once()
-				client.On("ListAttachedUserPoliciesPages",
+				repo.On("ListAttachedUserPoliciesPages",
 					mock.Anything,
 					mock.MatchedBy(func(callback func(res *iam.ListAttachedUserPoliciesOutput, lastPage bool) bool) bool {
 						return true
@@ -212,7 +212,7 @@ func TestIamUserPolicyAttachmentSupplier_Resources(t *testing.T) {
 		}
 
 		t.Run(c.test, func(tt *testing.T) {
-			fakeIam := mocks.FakeIAM{}
+			fakeIam := repository.MockIAMRepository{}
 			c.mocks(&fakeIam)
 
 			provider := mocks2.NewMockedGoldenTFProvider(c.dirName, providerLibrary.Provider(terraform.AWS), shouldUpdate)
